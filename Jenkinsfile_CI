@@ -1,0 +1,120 @@
+pipeline {
+    agent any
+    tools {
+        nodejs 'nodejs 23.2.0'
+    }
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+    stages {
+        stage('Git CheckOut') {
+            steps {
+                git branch: 'main', url: 'https://github.com/FliprInternAlfaiz/3-Tier-DevSecOps-Mega-Project'
+            }
+        }
+        stage('Frontend Compilation') {
+            steps {
+                dir('client') {
+                    bat '''
+                    for /R %%f in (*.js) do (
+                        echo Checking %%f
+                        node --check "%%f"
+                    )
+                    '''
+                }
+            }
+        }
+        stage('Backend Compilation') {
+            steps {
+                dir('api') {
+                    bat '''
+                    for /R %%f in (*.js) do (
+                        echo Checking %%f
+                        node --check "%%f"
+                    )
+                    '''
+                }
+            }
+        }
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    bat """
+                    ${SCANNER_HOME}\\bin\\sonar-scanner ^
+                    -Dsonar.projectKey=nodeJS-Project ^
+                    -Dsonar.projectName=nodeJS-Project
+                    """
+                }
+            }
+        }
+        stage('Quality Gate Check') {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        stage('Trivy FS Scan') {
+            steps {
+                script {
+                    bat """
+                    docker run --rm -v %cd%:/workspace aquasec/trivy fs /workspace --exit-code 0 --severity HIGH,CRITICAL > trivy-fs-report.txt
+                    """
+                    echo "✅ Trivy filesystem scan completed. Report: trivy-fs-report.txt"
+                }
+            }
+        }
+        stage('Build, Scan & Push Backend Docker Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-cred') {
+                        dir('api') {
+                            bat 'docker build -t alfaizrangrez/backend:latest .'
+
+                             catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                        bat """
+                        docker run --rm ^
+                          -v %cd%:/workspace ^
+                          -v trivy-cache:/root/.cache/ ^
+                          aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL ^
+                          --format table alfaizrangrez/backend:latest ^
+                          > trivy-backend-report.txt
+                        """
+                    }
+
+                    echo "📄 Trivy backend report saved: trivy-backend-report.txt"
+
+                            bat 'docker push alfaizrangrez/backend:latest'
+                        }
+                    }
+                }
+            }
+        }
+        stage('Build, Scan & Push Frontend Docker Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-cred') {
+                        dir('client') {
+                            bat 'docker build -t alfaizrangrez/frontend:latest .'
+
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                bat """
+                                docker run --rm aquasec/trivy image --exit-code 1 --severity HIGH,CRITICAL alfaizrangrez/frontend:latest > trivy-frontend-report.txt
+                                """
+                            }
+
+                            bat 'docker push alfaizrangrez/frontend:latest'
+                        }
+                    }
+                }
+            }
+        }
+        stage('Docker Deploy via Compose') {
+            steps {
+                script {
+                    bat 'docker-compose up -d'
+                }
+            }
+        }
+    }
+}

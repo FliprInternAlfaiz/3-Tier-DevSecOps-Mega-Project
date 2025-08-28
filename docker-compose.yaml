@@ -14,7 +14,7 @@ services:
     ports:
       - "3306:3306"
 
-  backend:
+  backend-svc:
     build: ./api
     container_name: backend-api
     environment:
@@ -35,7 +35,7 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      - backend-svc
 
 volumes:
   mysql-data:
