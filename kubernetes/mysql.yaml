@@ -53,7 +53,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: ebs-StorageClass
+  storageClassName: ebs-Storageclass
   hostPath:
     path: /mnt/data/mysql
 
@@ -66,7 +66,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: ebs-StorageClass
+  storageClassName: ebs-Storageclass
   accessModes:
     - ReadWriteOnce
 
