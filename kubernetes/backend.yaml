@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: adijaiswal/backend:latest
+          image: alfaizrangrez/backend:latest
           ports:
             - containerPort: 5000
           env:
@@ -40,7 +40,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend-svc
+  name: backend
   namespace: prod
 spec:
   selector:
