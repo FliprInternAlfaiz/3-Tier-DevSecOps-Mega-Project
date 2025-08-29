@@ -5,9 +5,9 @@ metadata:
   labels:
     app: backend
 data:
-  DB_PASSWORD: Alfaiz 
-  JWT_SECRET: devopsShackSuperSecretKey
-
+  DB_PASSWORD: QWxmYWl6   # base64 of "Alfaiz"
+  JWT_SECRET: ZGV2b3BzU2hhY2tTdXBlclNlY3JldEtleQ==   # base64 of "devopsShackSuperSecretKey"
+  
 ---
 apiVersion: v1
 kind: ConfigMap
