@@ -28,4 +28,5 @@ This repository contains a simple Node.js API and a React client used for a user
 
 5. Open `http://localhost:3000` in your browser to use the application.
 
+6. docker run -d --name sonar-test -p 9000:9000 sonarqube
 The client now displays an animated banner welcoming you to **DevOps Shack**.
