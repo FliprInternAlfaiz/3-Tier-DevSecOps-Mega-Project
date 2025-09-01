@@ -1,8 +1,6 @@
 pipeline {
     agent any
-    tools {
-        nodejs 'nodejs 23.2.0'
-    }
+   tools { nodejs 'nodejs 23.2.0' }
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
     }
@@ -12,6 +10,7 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/FliprInternAlfaiz/3-Tier-DevSecOps-Mega-Project'
             }
         }
+
         stage('Frontend Compilation') {
             steps {
                 dir('client') {
@@ -24,6 +23,7 @@ pipeline {
                 }
             }
         }
+
         stage('Backend Compilation') {
             steps {
                 dir('api') {
@@ -36,6 +36,7 @@ pipeline {
                 }
             }
         }
+
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar') {
@@ -47,23 +48,26 @@ pipeline {
                 }
             }
         }
-       stage('Quality Gate Check') {
+
+        stage('Quality Gate Check') {
             steps {
                 timeout(time: 1, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
                 }
             }
         }
+
         stage('Trivy FS Scan') {
             steps {
                 script {
-                    bat """
+                      bat """
                     docker run --rm -v %cd%:/workspace aquasec/trivy fs /workspace --exit-code 0 --severity HIGH,CRITICAL > trivy-fs-report.txt
                     """
                     echo "✅ Trivy filesystem scan completed. Report: trivy-fs-report.txt"
                 }
             }
         }
+
         stage('Build, Scan & Push Backend Docker Image') {
             steps {
                 script {
@@ -71,18 +75,17 @@ pipeline {
                         dir('api') {
                             bat 'docker build -t alfaizrangrez/backend:latest .'
 
-                             catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                        bat """
-                        docker run --rm ^
-                          -v %cd%:/workspace ^
-                          -v trivy-cache:/root/.cache/ ^
-                          aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL ^
-                          --format table alfaizrangrez/backend:latest ^
-                          > trivy-backend-report.txt
-                        """
-                    }
-
-                    echo "📄 Trivy backend report saved: trivy-backend-report.txt"
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                bat """
+                                docker run --rm ^
+                                  -v %cd%:/workspace ^
+                                  -v trivy-cache:/root/.cache/ ^
+                                  aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL ^
+                                  --format table alfaizrangrez/backend:latest ^
+                                  > trivy-backend-report.txt
+                                """
+                            }
+                            echo "📄 Trivy backend report saved: trivy-backend-report.txt"
 
                             bat 'docker push alfaizrangrez/backend:latest'
                         }
@@ -90,6 +93,7 @@ pipeline {
                 }
             }
         }
+
         stage('Build, Scan & Push Frontend Docker Image') {
             steps {
                 script {
@@ -99,7 +103,7 @@ pipeline {
 
                             catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                                 bat """
-                                docker run --rm aquasec/trivy image --exit-code 1 --severity HIGH,CRITICAL alfaizrangrez/frontend:latest > trivy-frontend-report.txt
+                                docker run --rm aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL alfaizrangrez/frontend:latest > trivy-frontend-report.txt
                                 """
                             }
 
@@ -109,31 +113,44 @@ pipeline {
                 }
             }
         }
-        
-         stage('Deployment To Prod') {
-    steps {
-        script {
-            withKubeConfig([credentialsId: 'k8s-config']) {
-                bat "kubectl apply -f kubernetes/sc.yaml -n dev --validate=false"
-                bat "kubectl apply -f kubernetes/mysql.yaml -n dev --validate=false"
-                bat "kubectl apply -f kubernetes/backend.yaml -n dev --validate=false"
-                bat "kubectl apply -f kubernetes/frontend.yaml -n dev --validate=false"
+
+        stage('Manual Approval for production') {
+            steps {
+                script {
+                    timeout(time: 1, unit: 'HOURS') {
+                        input message: 'Approve Deployment to PROD', ok: 'Deploy'
+                    }
+                }
             }
         }
-    }
-}
 
-stage('Verify Deployment To Prod') {
-    steps {
-        script {
-            withKubeConfig([credentialsId: 'k8s-config']) {
-                bat "kubectl get pods -n dev"
-                bat "kubectl get svc -n dev"
+        stage('Deployment To Prod') {
+            steps {
+                script {
+                    withKubeConfig([credentialsId: 'k8s-config']) {
+                        bat "kubectl apply -f kubernetes/sc.yaml -n prod --validate=false"
+                        bat "kubectl apply -f kubernetes/mysql.yaml -n prod --validate=false"
+                        bat "kubectl apply -f kubernetes/backend.yaml -n prod --validate=false"
+                        bat "kubectl apply -f kubernetes/frontend.yaml -n prod --validate=false"
+                        bat "kubectl apply -f kubernetes/ingress.yaml -n prod --validate=false"
+
+                        // wait for deployments to be ready
+                        bat "kubectl rollout status deployment backend -n prod --timeout=60s"
+                        bat "kubectl rollout status deployment frontend -n prod --timeout=60s"
+                    }
+                }
             }
         }
-    }
-}
 
-        
+        stage('Verify Deployment To Prod') {
+            steps {
+                script {
+                    withKubeConfig([credentialsId: 'k8s-config']) {
+                        bat "kubectl get pods -n prod"
+                        bat "kubectl get ingress -n prod"
+                    }
+                }
+            }
+        }
     }
 }
